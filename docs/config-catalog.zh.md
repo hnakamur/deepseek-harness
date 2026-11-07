@@ -493,6 +493,15 @@ export interface ConnectionConfig {
    * an entry here. A non-canonical or non-bare authority fails plugin load.
    */
   trustedHosts?: string[]
+  /**
+   * Require the launch token and a signed session cookie before serving the
+   * index and API. Default: true. `false` admits every request that passes
+   * the Host/Origin fence as the browser Peer and makes `authenticatedUrl`
+   * return its input unchanged; anyone who can reach the port then controls
+   * this agent, so keep it true unless another mechanism already restricts
+   * the port to trusted users.
+   */
+  token?: boolean
   /** Absolute browser and API cookie lifetime in days. Default: 30. */
   cookieMaxAgeDays?: number
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
@@ -4668,7 +4677,7 @@ export interface WebRuntimeConfig {
 ## `@deepseek-ai/dsh-web-app`
 
 - `inject`: `webServer`
-- `source`: [`packages/bundle/web-app/src/index.ts:55`](../packages/bundle/web-app/src/index.ts)
+- `source`: [`packages/bundle/web-app/src/index.ts:56`](../packages/bundle/web-app/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: composed deployment settings plus per-invocation command-line values. */
@@ -4690,6 +4699,13 @@ export interface Config {
    * Absent or YAML `null` advertises the bind-address URL.
    */
   publicUrl?: string
+  /**
+   * Whether serving requires the launch token and session cookie; the
+   * `--no-token` flag sets this false. Default: true. `false` only adds the
+   * startup warning that anyone who can reach the port can use the agent; the
+   * credential check itself is Connection's `token` config.
+   */
+  token?: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-web-app -->

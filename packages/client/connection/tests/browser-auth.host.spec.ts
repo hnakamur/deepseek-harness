@@ -4,7 +4,7 @@ import { createHmac } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { PeerId } from '@deepseek-ai/dsh-typert-protocol'
-import { BrowserAuth } from '../src/browser-auth.ts'
+import { BrowserAuth, type BrowserAuthOptions } from '../src/browser-auth.ts'
 import type { ConnectionIndexRequest, ConnectionIndexResponse } from '../src/rpc.ts'
 import { RecordCredentials } from './browser-credentials.ts'
 
@@ -56,8 +56,9 @@ function createAuth(
   store: RecordCredentials,
   maxAgeDays = 30,
   processOwner: object = {},
+  options: BrowserAuthOptions = {},
 ): Promise<BrowserAuth> {
-  return BrowserAuth.create(processOwner, credentials(store), maxAgeDays)
+  return BrowserAuth.create(processOwner, credentials(store), maxAgeDays, options)
 }
 
 function request(url: string, authority = '127.0.0.1:3080', init?: {
@@ -366,5 +367,64 @@ describe('BrowserAuth', () => {
 
     await expect(createAuth(new RecordCredentials(), Number.MAX_SAFE_INTEGER))
       .rejects.toThrow(/safe timestamp range/u)
+  })
+
+  it('serves every request without a credential and prints the URL unchanged', async () => {
+    const auth = await createAuth(new RecordCredentials(), 30, {}, { open: true })
+
+    expect(auth.authenticatedUrl('http://127.0.0.1:3080')).toBe('http://127.0.0.1:3080')
+    expect(auth.authenticatedUrl('https://gateway.example/tools/dsh/')).toBe('https://gateway.example/tools/dsh/')
+    expect(auth.isAuthenticated(request('/', '127.0.0.1:3080'))).toBe(true)
+    expect(auth.isAuthenticated({ headers: {} })).toBe(true)
+
+    const served = response()
+    expect(auth.authorizeIndex(request('/', '127.0.0.1:3080'), served.value)).toBe(true)
+    expect(served.state).toEqual({})
+    const indexed = response()
+    expect(auth.authorizeIndex(request('/index.html', '127.0.0.1:3080'), indexed.value)).toBe(true)
+    expect(indexed.state).toEqual({})
+  })
+
+  it('drops an obsolete root token query before serving the clean application', async () => {
+    const auth = await createAuth(new RecordCredentials(), 30, {}, { open: true })
+
+    const stale = response()
+    expect(auth.authorizeIndex(request('/?token=obsolete', '127.0.0.1:3080'), stale.value)).toBe(false)
+    expect(stale.state).toEqual({
+      status: 303,
+      headers: {
+        'cache-control': 'no-store',
+        'location': './',
+        'referrer-policy': 'no-referrer',
+      },
+    })
+
+    // Only the root exchange cleans the query; a deeper path serves directly.
+    const nested = response()
+    expect(auth.authorizeIndex(request('/index.html?token=obsolete', '127.0.0.1:3080'), nested.value)).toBe(true)
+    expect(nested.state).toEqual({})
+  })
+
+  it('answers /connect without exchanging a credential', async () => {
+    const auth = await createAuth(new RecordCredentials(), 30, {}, { open: true })
+    const publish = vi.fn(() => 'api-operator' as PeerId)
+
+    const res = response()
+    auth.authorizeConnect(request('/connect?interactions=answer'), res.value, false, publish)
+    expect(res.state).toEqual({
+      status: 302,
+      headers: {
+        'cache-control': 'no-store',
+        'location': './api/remote.mux',
+        'referrer-policy': 'no-referrer',
+      },
+    })
+    expect(publish).not.toHaveBeenCalled()
+
+    // Route validation still applies in open mode.
+    const repeated = response()
+    auth.authorizeConnect(request('/connect?interactions=answer&interactions=none'), repeated.value, false, publish)
+    expect(repeated.state.status).toBe(400)
+    expect(publish).not.toHaveBeenCalled()
   })
 })

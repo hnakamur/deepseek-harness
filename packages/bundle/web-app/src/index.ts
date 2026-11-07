@@ -7,7 +7,8 @@
  * bash-visible web runtime variable, the process-token URL line, and the
  * default-browser handoff, and provides the `webApp` service. An advertised
  * `publicUrl` replaces the published bind-address URL. Non-loopback
- * HTTP binds trigger an exposure warning. App command-line values arrive
+ * HTTP binds trigger an exposure warning, and tokenless serving (`--no-token`)
+ * warns that the GUI answers unauthenticated. App command-line values arrive
  * through the `webStartup` service expressions in the bundle patch.
  * @module @deepseek-ai/dsh-web-app
  */
@@ -70,6 +71,13 @@ export interface Config {
    * Absent or YAML `null` advertises the bind-address URL.
    */
   publicUrl?: string
+  /**
+   * Whether serving requires the launch token and session cookie; the
+   * `--no-token` flag sets this false. Default: true. `false` only adds the
+   * startup warning that anyone who can reach the port can use the agent; the
+   * credential check itself is Connection's `token` config.
+   */
+  token?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -77,6 +85,7 @@ export const Config: z<Config> = z.object({
   printUrl: z.boolean().default(true),
   surfaceContext: z.boolean().default(true),
   publicUrl: z.transform(z.string(), value => parsePublicUrl(value).href),
+  token: z.boolean().default(true),
 })
 
 /** Environment variable naming the advertised URL of this Web GUI. */
@@ -196,6 +205,11 @@ export function apply(ctx: Context, config: Config): void {
   }
   if (ctx.webServer.protocol === 'http:' && !isLoopbackHost(boundHost)) {
     console.warn(`dsh web: listening on ${boundHost} over plain HTTP; restrict this port to a trusted proxy or network`)
+  }
+  // The schema default covers Loader-mounted rows; a hand-built context may
+  // pass none, which keeps token authentication.
+  if (!(config.token ?? true)) {
+    console.warn('dsh web: authentication is disabled; anyone who can reach this port can use the agent with your authority')
   }
   // The bind URL belongs to this host. Under SSH, the operator reaches it
   // through a local forwarding address that this process cannot derive.

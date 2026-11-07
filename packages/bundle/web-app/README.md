@@ -13,7 +13,7 @@ Desktop analytics schedules partial batches every 30 seconds, with a 15-second e
 
 ## Summary
 
-Run `dsh --profile web` for browser chat, model and settings management, and session history, with the same model access, tools, and safety defaults as other dsh surfaces. Startup prints a tokenized URL and normally opens the default browser; SSH sessions and `--no-open` require manual opening. You can change the port, allow extra authorities, bind one concrete local IP, and serve HTTPS from a certificate you supply; wildcard addresses are rejected. Remote access uses an advertised HTTP(S) URL behind a prefix-stripping proxy, listener TLS, or plain HTTP on a non-loopback bind. Use the headless profile for one-shot command-line tasks.
+Run `dsh --profile web` for browser chat, model and settings management, and session history, sharing model access, tools, and safety defaults with other dsh surfaces. Startup prints a tokenized URL and opens the default browser; SSH sessions and `--no-open` require manual opening. You can change the port, allow extra authorities, bind one local IP, serve HTTPS from a certificate you supply, and drop the token check with `--no-token`; wildcard addresses are rejected. Remote access uses an advertised HTTP(S) URL behind a prefix-stripping proxy, listener TLS, or plain HTTP on a non-loopback bind. Use the headless profile for one-shot command-line tasks.
 
 ## Table of Contents
 
@@ -50,7 +50,7 @@ Saved model selections override the composition default. The settings card accep
 
 The `minimal` agent preset uses a persistent shell, the `read_image` tool, and a fixed persona, with automatic history compaction and the idle-session `/compact` command. It shares the Host token meter and owns an isolated compaction backend. [Compaction configuration and retention](../../compaction/compaction-basic/README.md#use-this-package) follow the existing backend. Image reads reuse the Host filesystem and attachment store and require an image-capable model; text read, write, and edit tools remain excluded.
 
-`--host` and `--port` configure the listener; `--tls-cert` and `--tls-key` make it serve HTTPS; `--public-url` names the advertised public HTTP(S) root the GUI is reached at behind a prefix-stripping proxy, and `--trusted-host` adds further accepted authorities. All are described under [Listening, trust, and public deployments](#public-deployments), and the `tls` field those flags set is documented with the [carrier's config](../../../docs/subsystems/web-server.md#config):
+`--host` and `--port` configure the listener; `--tls-cert` and `--tls-key` make it serve HTTPS; `--public-url` names the advertised public HTTP(S) root the GUI is reached at behind a prefix-stripping proxy, `--trusted-host` adds further accepted authorities, and `--no-token` removes the launch-token and session-cookie check. All are described under [Listening, trust, and public deployments](#public-deployments), and the `tls` field those flags set is documented with the [carrier's config](../../../docs/subsystems/web-server.md#config):
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -58,6 +58,7 @@ The `minimal` agent preset uses a persistent shell, the `read_image` tool, and a
 | `printUrl` | `true` | Print the `dsh web:` URL line at startup |
 | `surfaceContext` | `true` | Expose `DSH_WEB_URL` to the agent's shell commands |
 | `publicUrl` | Unset | Advertised HTTP(S) application root; otherwise announce the bind-address URL |
+| `token` | `true` | Require the launch token and session cookie before serving; `--no-token` sets it false and startup warns |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-web-app) lists this runtime plugin's accepted fields and their JSDoc. The shipped composition inserts the `schedule` service row and the `ui-schedule` task page row, while the clock reading and the four reminder tools belong to the `standard`, `cordis`, and `ptc` presets. The `tool-subagent` and `tool-subagent-fork` rows in those presets deny the four tools, so a delegated child's scope never lists them.
 
@@ -65,6 +66,8 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 ### Listening, trust, and public deployments
 
 By default the GUI listens on loopback and accepts connections from this machine only. Only `--host` changes the listener: it accepts one concrete local IPv4 or IPv6 address, never a wildcard. A non-loopback listener without TLS serves plain HTTP and warns at startup, even when an HTTPS `--public-url` fronts it. The Host/Origin fence accepts the bind IP itself; other non-loopback authorities require `--trusted-host`, so a remote browser reaches the GUI behind a prefix-stripping proxy or through a port-forwarding client that presents a trusted hostname. The launch-token exchange and signed session cookie authenticate every API method and WebSocket stream.
+
+Pass `--no-token` to remove that authentication: every request that passes the Host/Origin fence is then served, the printed and opened URL carries no token, and startup warns that anyone who can reach the port can use the agent. Use it only where something else already restricts the port to trusted users, such as a firewall or a proxy that authenticates; the fence keeps rejecting rebound or cross-site authorities.
 
 Pass `--tls-cert` and `--tls-key` together to serve HTTPS from the listener instead of plain HTTP. Each names a file resolved against the process working directory: the certificate file holds the full chain and the key file an unencrypted PEM private key. The flags are one setting — supplying only one is a usage error, and supplying neither keeps the plain-HTTP default. Startup fails when a file is missing, unreadable, empty, or not a valid certificate-and-key pair; it never falls back to HTTP. Nothing re-reads the material while the listener runs, so serving a different certificate needs a listener reload or a process restart. DSH issues, renews, and watches nothing: there is no ACME client, no self-signed fallback, and no redirect listener. The browser applies its own trust store and host-name matching, so a certificate the browser does not trust, or one whose subject alternative names miss the authority you open, fails before the page loads. The default port stays 3080, and `--tls-cert`/`--tls-key` do not follow `--public-url`: the listener's certificate covers the authority browsers dial. TLS changes nothing about authority: Connection still authenticates every request and still checks Host/Origin, and the session cookie it mints is `Secure` whenever the receiving listener serves HTTPS.
 
@@ -82,7 +85,7 @@ Without `--public-url`, mapped IPv6 loopback binds such as `::ffff:127.0.0.1` ad
 
 Neither the advertised URL nor the browser-trust fence protects the port itself, so restrict the port to the trusted proxy or network.
 
-The printed URL contains a process credential; share it only with intended users. `printUrl: false` suppresses the line with or without `--public-url`, and the credential never appears in the model context or in `DSH_WEB_URL`.
+The printed URL contains a process credential unless `--no-token` removed the check; share it only with intended users. `printUrl: false` suppresses the line with or without `--public-url`, and the credential never appears in the model context or in `DSH_WEB_URL`.
 
 ### Running over SSH
 
@@ -108,7 +111,7 @@ A patch replaces the targeted row's whole `config`, so each web row restates eve
 
 ### Advertised application URL
 
-Startup display and browser handoff receive the advertised root with its launch token; the agent's runtime context and `DSH_WEB_URL` receive it clean. The root itself is defined under [Listening, trust, and public deployments](#public-deployments).
+Startup display and browser handoff receive the advertised root with its launch token, or clean under `--no-token`; the agent's runtime context and `DSH_WEB_URL` receive it clean. The root itself is defined under [Listening, trust, and public deployments](#public-deployments).
 
 ### Readiness
 
@@ -120,7 +123,7 @@ The URL line and browser handoff are readiness signals: supervisors RPC as soon 
 |---|---|
 | [`src/index.ts`](src/index.ts) | The `web-app` glue plugin: dist resolution, advertised application URL, bash variable, URL line, browser handoff |
 | [`src/public-url.ts`](src/public-url.ts) | Advertised-root validation and trailing-slash normalization; a leaf module for local imports, not package API |
-| [`src/startup.ts`](src/startup.ts) | The `web-startup` provider: `--host`, `--port`, `--tls-cert`, `--tls-key`, `--public-url`, `--trusted-host`, `--no-open`, `--help` |
+| [`src/startup.ts`](src/startup.ts) | The `web-startup` provider: `--host`, `--port`, `--tls-cert`, `--tls-key`, `--public-url`, `--trusted-host`, `--no-open`, `--no-token`, `--help` |
 | [`cordis.patch.yml`](cordis.patch.yml) | The web patch: restated base values, web host rows, browser roster, preset registry |
 | [`presets/`](presets) | One `@deepseek-ai/dsh-agent-preset` declaration per shipped preset (`standard`, `ptc`, `minimal`, `cordis`), each its own patch file |
 | [`tests/web-app.spec.ts`](tests/web-app.spec.ts) | Dist index anchoring, advertised-URL publication and warnings, bash variable, readiness publication |
@@ -176,6 +179,7 @@ These limits tell you what to expect in unusual setups — a source checkout, SS
 - **SSH sessions keep the URL but skip the browser handoff** — without an advertised root the printed URL names the remote host's bind-address endpoint (loopback for a loopback bind); the SSH client or editor must expose and open the local forwarded address.
 - **`BROWSER` overrides only come from the environment** — a discovered `.env` cannot set `BROWSER`; only an inherited value can choose the executable for the automatic handoff.
 - **Binding all network interfaces is not supported** — a wildcard `--host`, including the IPv4-mapped forms Linux reads as IPv4 any, is rejected at startup for safety; bind one concrete IPv4 or IPv6 address of a local interface instead.
+- **`--no-token` serves the GUI unauthenticated** — every request that passes the Host/Origin fence is served; use it only where something else already restricts the port to trusted users.
 
 <a id="dev-note"></a>
 ### Dev Note

@@ -611,6 +611,19 @@ describe('connection node half', () => {
     await dispose()
   })
 
+  it('admits every trusted request as the browser Peer without a credential when token authentication is disabled', async () => {
+    const { connection, dispose } = await mounted({ token: false })
+    try {
+      // The Host/Origin fence still rejects a rebound or cross-site authority.
+      expect(connection.admit(fakeRequest({ host: 'other.example' }))).toEqual({ rejection: 403 })
+      expect(connection.admit(fakeRequest({ host: '127.0.0.1:3080' }))).toEqual({ peer: connection.browserPeer })
+      expect(connection.admit(fakeRequest({ host: 'localhost' }))).toEqual({ peer: connection.browserPeer })
+      expect(connection.authenticatedUrl('http://127.0.0.1:3080')).toBe('http://127.0.0.1:3080')
+    } finally {
+      await dispose()
+    }
+  })
+
   it('applies the configured trust fence and JSON envelope checks to generic channels', async () => {
     const ctx = new Context()
     const routes: WebRoute[] = []

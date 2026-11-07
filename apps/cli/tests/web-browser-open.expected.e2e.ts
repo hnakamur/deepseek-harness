@@ -96,6 +96,66 @@ describe.skipIf(!builtArtifactsExist)('dsh web browser-open assembled snapshot',
     `)
   })
 
+  it('opens the plain URL without a token exchange when token authentication is disabled', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-web-browser-open-no-token-snapshot-'))
+    tempRoots.push(root)
+    const result = await execa(process.execPath, [
+      '--import', openerHook,
+      builtBin,
+      'web',
+      '--port', '0',
+      '--no-token',
+    ], {
+      cwd: root,
+      env: {
+        ...process.env,
+        BROWSER_OPEN_TEST_OPEN_MODE: '1',
+        DEEPSEEK_API_KEY: 'keyless-browser-open-no-call',
+        DSH_AGENTS_HOME: join(root, '.agents'),
+        DSH_HOME: join(root, '.dsh'),
+        DSH_TELEMETRY_DISABLED: '1',
+        NODE_NO_WARNINGS: '1',
+        SSH_CONNECTION: '',
+        SSH_TTY: '',
+      },
+      input: '',
+      timeout: 30_000,
+      killSignal: 'SIGKILL',
+      reject: false,
+    })
+    const readyUrl = /dsh web: (http:\/\/[^\s]+)/u.exec(result.stdout)?.[1]
+    const openLine = result.stdout.split('\n').find(line => line.startsWith('dsh browser-open: '))
+    const opening = result.stdout.includes(openingMessage)
+    if (readyUrl === undefined || openLine === undefined || !opening) {
+      throw new Error(`dsh web no-token browser-open evidence missing\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`)
+    }
+    const opened = JSON.parse(openLine.slice('dsh browser-open: '.length)) as BrowserOpenRecord
+
+    expect({
+      exitCode: result.exitCode,
+      opening,
+      readyUrl: normalizeLocalUrl(readyUrl),
+      openedUrl: normalizeLocalUrl(opened.url),
+      status: opened.status,
+      bootManifest: opened.bootManifest,
+      apiKeyPresent: opened.apiKeyPresent,
+      dshHomePresent: opened.dshHomePresent,
+      stderr: result.stderr,
+    }).toMatchInlineSnapshot(`
+      {
+        "apiKeyPresent": false,
+        "bootManifest": true,
+        "dshHomePresent": false,
+        "exitCode": 0,
+        "openedUrl": "http://127.0.0.1:{{port}}",
+        "opening": true,
+        "readyUrl": "http://127.0.0.1:{{port}}",
+        "status": 200,
+        "stderr": "dsh web: authentication is disabled; anyone who can reach this port can use the agent with your authority",
+      }
+    `)
+  })
+
   it('prints the launcher reason and manual URL after the Web app is ready', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-web-browser-open-failure-snapshot-'))
     tempRoots.push(root)

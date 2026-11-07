@@ -197,7 +197,9 @@
     # prints the URL line, and opens the canonical URL after the full Loader
     # tree settles and the required-entry audit passes. Invocation-only values
     # come from the webStartup provider; the advertised application URL is
-    # this row's `publicUrl`, otherwise the bind-address URL.
+    # this row's `publicUrl`, otherwise the bind-address URL. `token` mirrors
+    # the connection row so the glue can warn when the GUI serves
+    # unauthenticated.
     - id: web-runtime
       name: '@deepseek-ai/dsh-web-app'
       inject: [webStartup]
@@ -206,6 +208,7 @@
         printUrl: true
         publicUrl: !!js ctx.webStartup.publicUrl
         surfaceContext: true
+        token: !!js ctx.webStartup.token
 
     # Model context for an agent that inspects or extends the harness serving
     # this GUI: value-free prompt sections plus the current checkout and GUI
@@ -234,7 +237,10 @@
     # Owns both ends of the web transport: node half binds the gateway to the
     # webserver under /api; browser half is the fetch/SSE client. Every API
     # request and upgrade passes the loopback, listener-bind, or trustedHosts
-    # policy; an advertised public URL contributes nothing to it.
+    # policy; an advertised public URL contributes nothing to it. The `token`
+    # value decides whether requests additionally need the launch token and
+    # session cookie; `--no-token` turns that check off, which leaves the
+    # Host/Origin fence as the only gate on the agent.
     - id: connection
       name: '@deepseek-ai/dsh-client-connection'
       inject: [webStartup]
@@ -243,6 +249,7 @@
         # deployment values, for example: ['app.internal', ...ctx.webStartup.trustedHosts].
         # The listener's bind IP is accepted separately from this list.
         trustedHosts: !!js ctx.webStartup.trustedHosts
+        token: !!js ctx.webStartup.token
 
     # Raw Blob and ReadableStream uploads run independently of Connection's
     # RPC and generation service.

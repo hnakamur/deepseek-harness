@@ -103,6 +103,15 @@ export interface ConnectionConfig {
    * an entry here. A non-canonical or non-bare authority fails plugin load.
    */
   trustedHosts?: string[]
+  /**
+   * Require the launch token and a signed session cookie before serving the
+   * index and API. Default: true. `false` admits every request that passes
+   * the Host/Origin fence as the browser Peer and makes `authenticatedUrl`
+   * return its input unchanged; anyone who can reach the port then controls
+   * this agent, so keep it true unless another mechanism already restricts
+   * the port to trusted users.
+   */
+  token?: boolean
   /** Absolute browser and API cookie lifetime in days. Default: 30. */
   cookieMaxAgeDays?: number
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
@@ -112,6 +121,7 @@ export interface ConnectionConfig {
 export const Config: z<ConnectionConfig> = z.object({
   recovery: ConnectionRecoveryConfigSchema.default({}),
   trustedHosts: z.array(String).default([]),
+  token: z.boolean().default(true),
   cookieMaxAgeDays: z.natural().min(1).default(30),
   maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
 })
@@ -127,6 +137,7 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
   const recovery = resolveConnectionConfig(config?.recovery)
   // The Loader resolves schema defaults; hand-built test contexts may pass none.
   const trustedHosts = config?.trustedHosts ?? []
+  const tokenRequired = config?.token ?? true
   const cookieMaxAgeDays = config?.cookieMaxAgeDays ?? 30
   const maxRequestBodyBytes = config?.maxRequestBodyBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES
   // Config boundary: a malformed entry fails the load loudly here rather than
@@ -136,7 +147,7 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
   const connection = new HostConnectionService(
     ctx,
     trustedHosts,
-    await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
+    await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays, { open: !tokenRequired }),
   )
   ctx.inject(['webServer'], (webCtx) => {
     assertImageBodyCapacity(webCtx, maxRequestBodyBytes)

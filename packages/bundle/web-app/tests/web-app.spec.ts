@@ -70,11 +70,13 @@ function fakeHttpServer(host = '127.0.0.1'): { server: WebServer } {
 }
 
 /** Deterministic Host Connection face for URL publication and frontend injection. */
-function provideConnection(ctx: Context): void {
+function provideConnection(ctx: Context, open = false): void {
   ctx.provide('connection', {
     // Adds the process token to the given canonical root, preserving any
-    // public mount prefix the caller passed.
+    // public mount prefix the caller passed. Open mode (token authentication
+    // disabled) serves without a credential and returns the URL unchanged.
     authenticatedUrl(baseUrl: string) {
+      if (open) return baseUrl
       const url = new URL(baseUrl)
       url.searchParams.set('token', 'test-token')
       return url.href
@@ -139,6 +141,27 @@ describe('web-app runtime glue', () => {
     const webRuntime = contributions.find(contribution => contribution.name === 'web-runtime')
     expect(webRuntime?.resolve()).toEqual({ DSH_WEB_URL: 'http://127.0.0.1:4567' })
     expect(ctx.webApp.getAdvertisedUrl()).toBe('http://127.0.0.1:4567')
+  })
+
+  it('prints the plain URL and warns when token authentication is disabled', async () => {
+    stageDist()
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    ctx.provide('webServer', fakeHttpServer().server)
+    provideConnection(ctx, true)
+    provideLoader(ctx)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const openBrowser = vi.fn(async () => {})
+    internals.openBrowser = openBrowser
+    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: false, token: false }))
+    await vi.waitFor(() => { expect(log).toHaveBeenCalled() })
+
+    expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567')
+    expect(warn).toHaveBeenCalledWith(
+      'dsh web: authentication is disabled; anyone who can reach this port can use the agent with your authority',
+    )
+    expect(openBrowser).not.toHaveBeenCalled()
   })
 
   it('advertises and opens the configured public root behind a prefix-stripping proxy', async () => {

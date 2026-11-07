@@ -198,6 +198,17 @@ async function initializeSecret(credentials: CredentialProvider): Promise<Buffer
   return secret
 }
 
+/** Options for {@link BrowserAuth.create}. */
+export interface BrowserAuthOptions {
+  /**
+   * Serve without credential verification: every request that passes the
+   * Host/Origin fence counts as the browser session, `authenticatedUrl`
+   * returns its input unchanged, and `/connect` redirects without minting a
+   * credential. Default: token authentication.
+   */
+  open?: boolean
+}
+
 /**
  * Process launch-token exchange and persistent signed-cookie verification.
  * Connection loads the credential provider's signing secret during activation
@@ -211,6 +222,7 @@ export class BrowserAuth {
     processOwner: object,
     private readonly secret: Buffer,
     maxAgeDays: number,
+    private readonly open: boolean,
   ) {
     this.launchToken = processLaunchToken(processOwner)
     this.maxAgeMilliseconds = maxAgeDays * DAY_MILLISECONDS
@@ -226,22 +238,28 @@ export class BrowserAuth {
    * @param processOwner - root application context retaining one token across Connection reloads.
    * @param credentials - persistent credential provider for the Web profile.
    * @param maxAgeDays - positive absolute browser-cookie lifetime in days.
+   * @param options - `open: true` skips credential verification; see
+   * {@link BrowserAuthOptions.open}.
    * @returns initialized authentication owner with the process owner's launch token.
    */
   static async create(
     processOwner: object,
     credentials: CredentialProvider,
     maxAgeDays: number,
+    options: BrowserAuthOptions = {},
   ): Promise<BrowserAuth> {
-    return new BrowserAuth(processOwner, await initializeSecret(credentials), maxAgeDays)
+    return new BrowserAuth(processOwner, await initializeSecret(credentials), maxAgeDays, options.open === true)
   }
 
   /**
    * Add this process's launch token to the caller's application URL.
    * @param baseUrl - clean browser URL whose authority and mount are preserved.
-   * @returns the same URL carrying the process token as its sole authentication input.
+   * @returns the same URL carrying the process token as its sole authentication
+   * input; open mode returns the URL unchanged, because serving requires no
+   * credential.
    */
   authenticatedUrl(baseUrl: string): string {
+    if (this.open) return baseUrl
     const url = new URL(baseUrl)
     url.searchParams.set(TOKEN_QUERY, this.launchToken)
     return url.href
@@ -263,6 +281,20 @@ export class BrowserAuth {
   authorizeIndex(req: ConnectionIndexRequest, res: ConnectionIndexResponse, secure = false): boolean {
     /* v8 ignore next -- node:http always supplies url on server requests. */
     const url = new URL(req.url ?? '/', 'http://dsh.invalid')
+    if (this.open) {
+      // An obsolete token URL (an old bookmark) still drops its query before
+      // the clean application loads; no credential is minted or required.
+      if (url.searchParams.has(TOKEN_QUERY) && req.method === 'GET' && url.pathname === '/') {
+        res.writeHead(303, {
+          'cache-control': 'no-store',
+          'location': './',
+          'referrer-policy': 'no-referrer',
+        })
+        res.end()
+        return false
+      }
+      return true
+    }
     const tokens = url.searchParams.getAll(TOKEN_QUERY)
     if (tokens.length > 0) {
       const authority = requestAudience(req.headers, secure)
@@ -325,6 +357,17 @@ export class BrowserAuth {
       res.end('interactions must be declared once as answer or none\n')
       return
     }
+    if (this.open) {
+      // There is no credential to exchange: the mux admits the caller as the
+      // browser Peer, so a kept-alive API client keeps following this redirect.
+      res.writeHead(302, {
+        'cache-control': 'no-store',
+        'location': './api/remote.mux',
+        'referrer-policy': 'no-referrer',
+      })
+      res.end()
+      return
+    }
     const tokens = url.searchParams.getAll(TOKEN_QUERY)
     const authority = requestAudience(req.headers, secure)
     if (req.method !== 'GET' || url.pathname !== CONNECT_PATH || tokens.length !== 1
@@ -351,9 +394,11 @@ export class BrowserAuth {
    * Verify the authority-bound browser cookie on a Host request.
    * @param request - request headers carrying Host and Cookie.
    * @param secure - whether the receiving listener uses TLS, including its default port.
-   * @returns true only for an unexpired cookie signed by this activation's loaded secret.
+   * @returns true only for an unexpired cookie signed by this activation's loaded secret;
+   * open mode returns true for every request.
    */
   isAuthenticated(request: ConnectionTrustRequest, secure = false): boolean {
+    if (this.open) return true
     return this.authenticate(request, secure)?.version === COOKIE_PAYLOAD_VERSION
   }
 

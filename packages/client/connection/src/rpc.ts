@@ -235,7 +235,9 @@ export interface HostConnectionHandle {
   /**
    * Admit an HTTP request against its signed browser or API credential and live Peer.
    * @param request - request headers from the HTTP or upgrade request.
-   * @returns the credential's Peer, or the rejection status.
+   * @returns the credential's Peer, or the rejection status. With token
+   * authentication disabled (`token: false`), every request that passes the
+   * Host/Origin fence returns the shared browser Peer.
    */
   admit(request: ConnectionTrustRequest): PeerAdmission
 
@@ -261,14 +263,18 @@ export interface HostConnectionHandle {
    * which only that listener's protocol decides.
    * @param request - root or configured-index HTTP request.
    * @param response - response owned when the result is false.
-   * @returns true only when the frontend may serve index.html.
+   * @returns true only when the frontend may serve index.html. With token
+   * authentication disabled, a root token query redirects to clean `./` and
+   * every other request serves the index.
    */
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean
 
   /**
    * Add the fresh process token to an ordinary Web application URL.
    * @param baseUrl - clean application URL whose authority and mount are preserved.
-   * @returns tokenized URL for initial login; a mount proxy strips its prefix before {@link authorizeIndex}.
+   * @returns tokenized URL for initial login; a mount proxy strips its prefix
+   * before {@link authorizeIndex}. With token authentication disabled, returns
+   * the URL unchanged.
    */
   authenticatedUrl(baseUrl: string): string
 }

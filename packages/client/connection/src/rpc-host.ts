@@ -194,7 +194,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
     return this.browserAuth.authorizeIndex(request, response, this.ctx.get('webServer')?.protocol === 'https:')
   }
 
-  /** Add this process's launch token to the clean application URL. */
+  /** Add this process's launch token to the clean application URL; open mode returns it unchanged. */
   authenticatedUrl(baseUrl: string): string {
     return this.browserAuth.authenticatedUrl(baseUrl)
   }

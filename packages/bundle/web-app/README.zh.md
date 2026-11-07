@@ -13,7 +13,7 @@ kind: "package-bundle"
 
 ## 概述
 
-运行 `dsh --profile web`，获得浏览器内的聊天、模型与设置管理以及会话历史，并与其他 dsh 表层共用同一套模型访问、工具与安全默认值。启动时会打印带 token 的 URL，通常还会在默认浏览器中打开；SSH 会话和 `--no-open` 需要手动打开。你可以更改端口、允许额外 authority、绑定一个具体的本机 IP，并用自己提供的证书直接提供 HTTPS；通配地址会被拒绝。跨机访问使用剥离前缀代理后公告的 HTTP(S) URL、监听器 TLS，或非 loopback 绑定上的明文 HTTP。一次性的命令行任务应使用 headless 配置。
+运行 `dsh --profile web`，获得浏览器内的聊天、模型与设置管理以及会话历史，模型访问、工具与安全默认值与其他 dsh 表层一致。启动时会打印带 token 的 URL，并在默认浏览器中打开；SSH 会话和 `--no-open` 需要手动打开。你可以更改端口、允许额外 authority、绑定一个本机 IP、用自己提供的证书直接提供 HTTPS，并用 `--no-token` 关闭 token 校验；通配地址会被拒绝。跨机访问使用剥离前缀代理后公告的 HTTP(S) URL、监听器 TLS，或非 loopback 绑定上的明文 HTTP。一次性的命令行任务应使用 headless 配置。
 
 ## 目录
 
@@ -50,7 +50,7 @@ dsh --profile web --no-open --port 8080
 
 `minimal` agent preset 使用持久 Shell、`read_image` 工具和固定 persona，支持自动历史压缩以及会话空闲时的 `/compact` 命令。它复用 Host token meter，并拥有隔离的压缩后端。[压缩配置与保留策略](../../compaction/compaction-basic/README.zh.md#use-this-package) 沿用现有后端。图片读取复用 Host 文件系统和附件存储，要求模型支持图片输入；不加载文本读取、写入和编辑工具。
 
-`--host` 与 `--port` 配置监听器；`--tls-cert` 与 `--tls-key` 让它直接提供 HTTPS；`--public-url` 指定 GUI 在剥离前缀的代理之后对外公告的公开 HTTP(S) 根，`--trusted-host` 则添加更多被接受的 authority。这些都在[监听、信任与公开部署](#public-deployments)中说明，而这些 flag 设置的 `tls` 字段记录在[载体的配置](../../../docs/subsystems/web-server.zh.md#config)中：
+`--host` 与 `--port` 配置监听器；`--tls-cert` 与 `--tls-key` 让它直接提供 HTTPS；`--public-url` 指定 GUI 在剥离前缀的代理之后对外公告的公开 HTTP(S) 根，`--trusted-host` 添加更多被接受的 authority，`--no-token` 则关闭启动 token 与会话 cookie 校验。这些都在[监听、信任与公开部署](#public-deployments)中说明，而这些 flag 设置的 `tls` 字段记录在[载体的配置](../../../docs/subsystems/web-server.zh.md#config)中：
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -58,6 +58,7 @@ dsh --profile web --no-open --port 8080
 | `printUrl` | `true` | 启动时打印 `dsh web:` URL 行 |
 | `surfaceContext` | `true` | 把 `DSH_WEB_URL` 暴露给 agent 的 shell 命令 |
 | `publicUrl` | 未设置 | 对外公告的 HTTP(S) 应用根；否则公告绑定地址 URL |
+| `token` | `true` | 提供服务前要求启动 token 与会话 cookie；`--no-token` 将其设为 false 并在启动时警告 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-web-app)列出了本运行时插件接受的字段及其 JSDoc。随发行版交付的组合插入 `schedule` 服务行与 `ui-schedule` 任务页面行，时钟读数与四个提醒工具则属于 `standard`、`cordis` 与 `ptc` 三个 preset。这三个 preset 的 `tool-subagent` 与 `tool-subagent-fork` 两行都 deny 这四个工具，因此被委派子 agent 的作用域不会列出它们。
 
@@ -65,6 +66,8 @@ dsh --profile web --no-open --port 8080
 ### 监听、信任与公开部署
 
 默认情况下 GUI 只监听 loopback，只接受本机的连接。只有 `--host` 会改变监听器：它接受一个具体的本机 IPv4 或 IPv6 地址，不接受通配地址。未启用 TLS 的非 loopback 监听器提供明文 HTTP，并在启动时警告，即使前置 HTTPS 的 `--public-url` 也不例外。Host/Origin 栅栏接受绑定 IP 本身；其他非 loopback authority 需要 `--trusted-host`，因此远端浏览器要么经由剥离前缀的代理访问 GUI，要么通过以可信主机名呈现的端口转发客户端访问。启动 token 交换与签名会话 cookie 认证每个 API 方法与 WebSocket 流。
+
+传入 `--no-token` 即可去掉这层认证：此后每个通过 Host/Origin 栅栏的请求都会被服务，打印与打开的 URL 不再携带 token，启动时也会警告任何能访问该端口的人都可以使用这个 agent。仅当端口已被防火墙或自带认证的代理等其他机制限制为可信用户时才使用它；栅栏仍会拒绝被重绑定或跨站伪造的 authority。
 
 同时传入 `--tls-cert` 与 `--tls-key`，监听器便以 HTTPS 而非明文 HTTP 提供服务。两者各指定一个相对进程工作目录解析的文件：证书文件包含完整证书链，密钥文件为不带口令的 PEM 私钥。它们属于同一个设置——只提供一个会报用法错误，两个都不提供则保持明文 HTTP 默认值。文件缺失、不可读、为空，或不是有效的证书与密钥对时启动失败；绝不回退到 HTTP。监听器运行期间不会重新读取这些材料，因此更换证书需要重新加载监听器或重启进程。DSH 不签发、不续期也不监视任何证书：没有 ACME 客户端、没有自签名兜底，也没有重定向监听器。浏览器使用自己的信任库与主机名匹配，因此浏览器不信任的证书，或其 subject alternative name 未覆盖你所访问 authority 的证书，会在页面加载前失败。默认端口仍为 3080，且 `--tls-cert`/`--tls-key` 不跟随 `--public-url`：监听器的证书覆盖浏览器实际访问的 authority。TLS 不改变授权模型：Connection 仍认证每个请求并仍校验 Host/Origin，且只要接收请求的监听器提供 HTTPS，它所签发的会话 cookie 就带 `Secure`。
 
@@ -82,7 +85,7 @@ dsh --profile web --no-open --host "$(hostname -i | awk '{print $1}')" --public-
 
 无论是公告 URL 还是浏览器信任栅栏都不保护端口本身，因此请把端口限制在可信代理或网络内。
 
-打印的 URL 包含进程凭据，只应与预期用户分享。`printUrl: false` 无论是否配置 `--public-url` 都会抑制该行，凭据也绝不会出现在模型上下文或 `DSH_WEB_URL` 中。
+打印的 URL 包含进程凭据，`--no-token` 关闭校验后除外；只应与预期用户分享。`printUrl: false` 无论是否配置 `--public-url` 都会抑制该行，凭据也绝不会出现在模型上下文或 `DSH_WEB_URL` 中。
 
 ### 通过 SSH 运行
 
@@ -108,7 +111,7 @@ patch 会替换目标行的整个 `config`，因此每个 Web 行都重述自己
 
 ### 公告应用 URL
 
-启动显示与浏览器交接接收附带启动 token 的公告根；agent 的运行时上下文与 `DSH_WEB_URL` 接收不含凭据的形式。根本身由[监听、信任与公开部署](#public-deployments)定义。
+启动显示与浏览器交接接收附带启动 token 的公告根，`--no-token` 下则为不含凭据的形式；agent 的运行时上下文与 `DSH_WEB_URL` 接收不含凭据的形式。根本身由[监听、信任与公开部署](#public-deployments)定义。
 
 ### 就绪宣告
 
@@ -120,7 +123,7 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 |---|---|
 | [`src/index.ts`](src/index.ts) | `web-app` 粘合插件：dist 解析、公告应用 URL、bash 变量、URL 行、浏览器交接 |
 | [`src/public-url.ts`](src/public-url.ts) | 公告根的校验与尾斜杠归一化；供本地导入的叶子模块，不属于包 API |
-| [`src/startup.ts`](src/startup.ts) | `web-startup` 提供方：`--host`、`--port`、`--tls-cert`、`--tls-key`、`--public-url`、`--trusted-host`、`--no-open`、`--help` |
+| [`src/startup.ts`](src/startup.ts) | `web-startup` 提供方：`--host`、`--port`、`--tls-cert`、`--tls-key`、`--public-url`、`--trusted-host`、`--no-open`、`--no-token`、`--help` |
 | [`cordis.patch.yml`](cordis.patch.yml) | Web patch：重述的基础值、Web 宿主行、浏览器名录、preset 注册表 |
 | [`presets/`](presets) | 每个随发行版交付的 preset（`standard`、`ptc`、`minimal`、`cordis`）各一条 `@deepseek-ai/dsh-agent-preset` 声明，各自一个补丁文件 |
 | [`tests/web-app.spec.ts`](tests/web-app.spec.ts) | dist index 锚定、公告 URL 发布与警告、bash 变量、就绪宣告发布 |
@@ -176,6 +179,7 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 - **SSH 会话保留 URL 但跳过浏览器交接**——没有公告根时，打印的 URL 指向远端宿主机的绑定地址；SSH 客户端或编辑器必须暴露并打开本地转发地址。
 - **`BROWSER` 覆盖只能来自环境**——被发现的 `.env` 不能设置 `BROWSER`；只有继承值能为自动交接选择可执行文件。
 - **不支持绑定所有网络接口**——出于安全考虑，通配 `--host`（含 Linux 视为 IPv4 any 的 IPv4-mapped 形式）会在启动时被拒绝；请改为绑定本机某个接口的一个具体 IPv4 或 IPv6 地址。
+- **`--no-token` 以未认证状态提供 GUI**——每个通过 Host/Origin 栅栏的请求都会被服务；仅当其他机制已把端口限制为可信用户时才使用它。
 
 <a id="dev-note"></a>
 ### 开发备注

@@ -1,8 +1,8 @@
 /**
  * The web app's command-line provider: it parses the `dsh --profile web` flag
- * family (`--host`, `--port`, `--public-url`, `--trusted-host`, `--no-open`, TLS)
- * and its `--help` text, then provides the immutable values as
- * {@link WEB_STARTUP_SERVICE}. Ordinary rows inject that service before
+ * family (`--host`, `--port`, `--public-url`, `--trusted-host`, `--no-open`,
+ * `--no-token`, TLS) and its `--help` text, then provides the immutable values
+ * as {@link WEB_STARTUP_SERVICE}. Ordinary rows inject that service before
  * reading it from lazy config.
  * @module @deepseek-ai/dsh-web-app/startup
  */
@@ -26,6 +26,12 @@ export const WEB_STARTUP_SERVICE = 'webStartup'
 export interface WebStartupValues {
   /** Whether this invocation opens the default browser after startup. */
   openBrowser: boolean
+  /**
+   * Whether serving requires the launch token and session cookie; the
+   * `--no-token` flag sets this false. The connection row's `token` field
+   * receives it and turns the credential check off.
+   */
+  token: boolean
   /** `--host`, absent when the invocation did not name one. */
   host?: string
   /** `--port`, absent when the invocation did not name one. */
@@ -47,6 +53,7 @@ interface WebOptions {
   open: boolean
   port?: string
   publicUrl?: string
+  token: boolean
   trustedHost?: string[]
   tlsCert?: string
   tlsKey?: string
@@ -63,6 +70,7 @@ function webCommand(): Command {
     .helpOption('-h, --help', 'show this help')
     .option('--host <host>', 'bind address: one concrete IPv4 or IPv6 literal of a local interface; wildcard addresses are rejected')
     .option('--no-open', 'do not open the Web UI in the default browser')
+    .option('--no-token', 'do not require the launch token or session cookie; anyone who can reach the port controls the agent')
     .option('--port <port>', 'listen port; pass 0 to let the OS pick a free one')
     .option('--public-url <url>', 'advertise this HTTP(S) root in the printed, opened, runtime-context, and DSH_WEB_URL forms; grants no trust')
     .option('--trusted-host <authority...>', 'extra authority the /api browser-trust fence accepts (host or host:port; repeatable)')
@@ -74,6 +82,8 @@ Examples:
   dsh --profile web --no-open                serve without opening a browser
   dsh --profile web --port 8080              serve on another port
   dsh --profile web --host 10.0.0.7          bind one local interface address
+  dsh --profile web --no-token --host 10.0.0.7
+                                             serve the bound address without the token check
   dsh --profile web --public-url https://app.example/ui/ --trusted-host app.example
                                              advertise a prefix-stripping HTTPS proxy entry and admit its authority
   dsh --profile web --tls-cert ./server-chain.pem --tls-key ./server-key.pem
@@ -113,6 +123,7 @@ export function apply(ctx: Context): void {
     }
     ctx.provide(WEB_STARTUP_SERVICE, {
       openBrowser: options.open,
+      token: options.token,
       ...options.host !== undefined && { host: options.host },
       ...options.port !== undefined && { port: Number(options.port) },
       ...options.publicUrl !== undefined && { publicUrl: options.publicUrl },

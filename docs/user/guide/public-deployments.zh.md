@@ -22,7 +22,7 @@ dsh --profile web --public-url https://app.example/ui/ --trusted-host app.exampl
 
 ## 信任浏览器使用的 authority
 
-栅栏接受 loopback、监听器自身的绑定地址，以及每个由 `--trusted-host` 点名的 authority。浏览器若以其他任何 authority 访问部署，无论代理多么正确，每个 API 调用都会得到 403，因此请用 `--trusted-host` 点名浏览器可见的 authority；用 `--public-url` 公告它只是展示，并不等于接纳。不带端口的条目匹配任意端口，适合每次绑定不同端口的隧道。栅栏只放行请求；打印 URL 中的启动 token 与签名会话 cookie 才完成认证。无论 TLS 在哪里终止都不改变这一切：证书只是向浏览器标识服务器，而不是向服务器标识浏览器。
+栅栏接受 loopback、监听器自身的绑定地址，以及每个由 `--trusted-host` 点名的 authority。浏览器若以其他任何 authority 访问部署，无论代理多么正确，每个 API 调用都会得到 403，因此请用 `--trusted-host` 点名浏览器可见的 authority；用 `--public-url` 公告它只是展示，并不等于接纳。不带端口的条目匹配任意端口，适合每次绑定不同端口的隧道。栅栏只放行请求；打印 URL 中的启动 token 与签名会话 cookie 才完成认证。`--no-token` 会去掉这层认证；除非 DSH 之外的机制已把端口限制为可信用户，否则保持关闭。无论 TLS 在哪里终止都不改变这一切：证书只是向浏览器标识服务器，而不是向服务器标识浏览器。
 
 无论是公告 URL 还是栅栏都不保护监听端口本身，因此请把端口限制在可信代理或网络内。
 

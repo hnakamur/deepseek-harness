@@ -185,6 +185,9 @@ Options:
                                  of a local interface; wildcard addresses are
                                  rejected
   --no-open                      do not open the Web UI in the default browser
+  --no-token                     do not require the launch token or session
+                                 cookie; anyone who can reach the port controls
+                                 the agent
   --port <port>                  listen port; pass 0 to let the OS pick a free
                                  one
   --public-url <url>             advertise this HTTP(S) root in the printed,
@@ -203,6 +206,8 @@ Examples:
   dsh --profile web --no-open                serve without opening a browser
   dsh --profile web --port 8080              serve on another port
   dsh --profile web --host 10.0.0.7          bind one local interface address
+  dsh --profile web --no-token --host 10.0.0.7
+                                             serve the bound address without the token check
   dsh --profile web --public-url https://app.example/ui/ --trusted-host app.example
                                              advertise a prefix-stripping HTTPS proxy entry and admit its authority
   dsh --profile web --tls-cert ./server-chain.pem --tls-key ./server-key.pem
